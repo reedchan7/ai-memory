@@ -73,7 +73,8 @@ from hook paths.
    observation. `log.md` gets an appended
    `## [YYYY-MM-DDTHH:MM:SSZ] <event> | <title>` line.
 3. On true `SessionEnd` events, the server synthesises a
-   `sessions/<id>.md` summary page (rule-based, no LLM) and opens a
+   `sessions/<id>.md` summary page (rule-based, no LLM) and, when
+   `[handoff] auto` is `store` or `inject` (default `off`), opens a
    `Handoff` row for the next agent. One SQLite transaction inserts that
    automatic handoff, stamps the session ended, and records the covered
    observation count, so recovery never sees only half of those DB effects. A
@@ -190,7 +191,8 @@ back, preventing delivered history from recursively re-entering the ledger.
 An explicitly pending handoff is delivered before the managed event range;
 their single-use delivery claims share one writer transaction after the
 complete startup response has been assembled. Manual handoffs take precedence;
-otherwise the newest cwd-eligible automatic handoff is delivered, and that
+otherwise, only under `[handoff] auto = "inject"`, the newest cwd-eligible
+automatic handoff is delivered, and that
 same transaction expires older eligible automatic handoffs while preserving
 manual and sibling-directory work. Insertion also expires prior open automatic
 handoffs from the exact cwd, bounding repeated SessionEnds before any receiver
@@ -621,6 +623,13 @@ backfill_on_start = true           # on first SessionStart in a brand-new (empty
 run_autowire = true                # `ai-memory run <harness>` auto-installs that harness's
                                    # hooks + MCP on first launch if missing (idempotent,
                                    # one-time per harness+version). Also `--no-autowire`.
+
+[handoff]
+auto = "off"                       # automatic SessionEnd baton: off (default) writes none;
+                                   # store writes it for memory_handoff_accept only; inject
+                                   # also prepends it to the next SessionStart (pre-setting
+                                   # behaviour). memory_handoff_begin batons are delivered
+                                   # in every mode. Env: AI_MEMORY_HANDOFF__AUTO
 
 [decay]                            # M8 retention params
 lambda = 0.02                      # ↓ to forget less aggressively (fallback λ)

@@ -15,9 +15,21 @@ general prompt/output DLP filter.
 
 ## Cross-agent handoff
 
-You normally do not create handoffs by hand. With lifecycle hooks
-installed, session-end capture writes the handoff and the next
-session-start hook fetches it. Manual handoffs are project-wide and take
+Ask for a handoff when you want one: say you are wrapping up and the agent
+calls `memory_handoff_begin`; the next session-start hook in that project
+delivers it once. Automatic handoffs are governed by `[handoff] auto` in the
+server's `config.toml` (env `AI_MEMORY_HANDOFF__AUTO`):
+
+| `auto` | SessionEnd writes a baton | Next SessionStart injects it |
+|---|---|---|
+| `off` (default) | no | no |
+| `store` | yes | no; the agent claims it with `memory_handoff_accept` when you ask where you left off |
+| `inject` | yes | yes, whatever the next session is about (the behaviour before this setting) |
+
+The automatic baton is rule-built from the session's first and last prompt, so
+under `inject` a new session that opens with "hi" receives "Continue from:
+<last prompt>" and may resume that work. The session page, consolidation and
+recall run in every mode. With `inject`, manual handoffs are project-wide and take
 precedence over automatic SessionEnd handoffs. Among automatic handoffs that
 match the receiving directory by path boundary, the newest is delivered;
 creating a new automatic handoff expires prior open automatic handoffs from
@@ -32,7 +44,8 @@ $ claude
 > /exit
 
 $ codex   # in the same directory, later
-[SessionStart hook fetches the handoff; Codex sees it before your prompt.]
+[SessionStart hook fetches the handoff; Codex sees it before your prompt.
+ Needs `memory_handoff_begin` before /exit, or `[handoff] auto = "inject"`.]
 > Picking up: you were investigating session cookies as an alternative...
 ```
 

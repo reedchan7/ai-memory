@@ -115,8 +115,11 @@ compacted or merged stays in git and the supersession chain, recoverable with
 ## Recipe: two agents / two repos working together
 
 - **Continuity across agents in the same project** (quit Claude Code, open Codex
-  in the same repo): automatic. A handoff is captured at session end and the
-  next session's on-start hook prepends it. Ask "where did we leave off?".
+  in the same repo): tell the agent you're wrapping up so it writes a handoff
+  (`memory_handoff_begin`); the next session's on-start hook prepends it. For an
+  automatic baton at every session end, set `[handoff] auto = "store"` (claimed
+  when you ask "where did we leave off?") or `"inject"` (prepended to the next
+  session unconditionally). The default `off` writes none.
 - **Ask an agent in another project to do something** without loading that
   project's context here: cross-project messaging — "send project-b a request to
   add the export endpoint" (`memory_message_send`), and over there "check my

@@ -1285,6 +1285,7 @@ pub async fn run(config: &Config, args: ServeArgs) -> Result<()> {
                 home_dir: config.home_dir.clone(),
                 trusted_proxy_identity: trusted_proxy_identity_enabled(&config.auth),
                 mid_session_routing: config.routing.mid_session,
+                auto_handoff: config.handoff.auto,
             });
             let workstreams = workstream_router(WorkstreamState {
                 writer: store.writer.clone(),

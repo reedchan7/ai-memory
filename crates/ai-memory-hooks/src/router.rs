@@ -501,6 +501,11 @@ pub struct HookState {
     /// default and historical behavior) or inherits the session's project
     /// (`sticky`). Held here because the hooks crate makes no config reads.
     pub mid_session_routing: ai_memory_core::MidSessionRouting,
+    /// `[handoff] auto`: whether SessionEnd writes an automatic handoff and
+    /// whether SessionStart injects one. Deliberate `memory_handoff_begin`
+    /// handoffs are unaffected. Held here because the hooks crate makes no
+    /// config reads.
+    pub auto_handoff: ai_memory_core::AutoHandoff,
 }
 
 /// The owner to stamp on the session and handoff rows this event creates
@@ -1286,7 +1291,12 @@ async fn fetch_and_accept_handoff(
     let handoff = state
         .reader
         .latest_open_handoff(ws, proj, query.cwd.clone(), owner_filter.clone())
-        .await?;
+        .await?
+        // Selection ranks every manual handoff above every automatic one, so
+        // an automatic pick means no deliberate baton is waiting. Leave it
+        // open and unclaimed: `store` keeps it for memory_handoff_accept, and
+        // `off` must not surface a backlog written before the switch.
+        .filter(|h| h.origin.from_session_id.is_none() || state.auto_handoff.injects());
     let handoff_md = handoff.as_ref().map(render_handoff_markdown);
     // The brief is additive and non-destructive: unlike the handoff (a
     // single-use slot claimed below), it is recomposed on every opted-in
@@ -2912,7 +2922,7 @@ async fn process_authorized(
         // baton lands in a bucket the operator's actorless transport cannot
         // read.
         let handoff_owner = owner_stamp_for_event(state, session_owner.as_ref()).await;
-        let handoff = (!managed).then(|| {
+        let handoff = (!managed && state.auto_handoff.writes()).then(|| {
             build_auto_handoff(
                 ws,
                 proj,
@@ -3752,6 +3762,9 @@ mod tests {
             ingest_gates: IngestGates::default(),
             per_user_slots: false,
             mid_session_routing: MidSessionRouting::default(),
+            // The pre-`[handoff]` behaviour, so the existing handoff tests keep
+            // covering the delivery path; mode-specific tests override it.
+            auto_handoff: ai_memory_core::AutoHandoff::Inject,
         }
     }
 
@@ -10317,6 +10330,132 @@ mod tests {
                 .state,
             ai_memory_core::HandoffState::Accepted
         );
+    }
+
+    fn scratch_start_query(cwd: &str) -> HandoffQuery {
+        HandoffQuery {
+            agent: Some("codex".into()),
+            cwd: Some(cwd.into()),
+            workspace: Some("default".into()),
+            project: Some("scratch".into()),
+            project_strategy: None,
+            briefing: None,
+            briefing_budget: None,
+            managed_run: None,
+            session_id: None,
+        }
+    }
+
+    async fn end_captured_session(state: &HookState, session: &str, cwd: &str) {
+        for event in ["user-prompt-submit", "session-end"] {
+            process(
+                state,
+                session_envelope(event, session, cwd),
+                None,
+                Vec::new(),
+            )
+            .await
+            .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn auto_handoff_off_writes_no_baton_but_keeps_the_session_page() {
+        let tmp = TempDir::new().unwrap();
+        let mut state = make_state(&tmp).await;
+        state.auto_handoff = ai_memory_core::AutoHandoff::Off;
+
+        end_captured_session(&state, "off-session", "/tmp/scratch").await;
+
+        assert!(
+            !open_handoff_exists(&state).await,
+            "off must not write a baton"
+        );
+        assert_eq!(
+            session_pages(&state).await.len(),
+            1,
+            "off must still write the session page"
+        );
+    }
+
+    #[tokio::test]
+    async fn auto_handoff_store_writes_the_baton_without_injecting_it() {
+        let tmp = TempDir::new().unwrap();
+        let mut state = make_state(&tmp).await;
+        state.auto_handoff = ai_memory_core::AutoHandoff::Store;
+
+        end_captured_session(&state, "store-session", "/tmp/scratch").await;
+        assert!(
+            open_handoff_exists(&state).await,
+            "store must write the baton"
+        );
+
+        let rendered = fetch_and_accept_handoff(
+            &state,
+            scratch_start_query("/tmp/scratch"),
+            None,
+            Vec::new(),
+        )
+        .await
+        .unwrap();
+        assert!(
+            rendered.is_none_or(|s| !s.contains("pending handoff")),
+            "store must not inject the baton at session start"
+        );
+        assert!(
+            open_handoff_exists(&state).await,
+            "store must leave the baton open for memory_handoff_accept"
+        );
+    }
+
+    #[tokio::test]
+    async fn auto_handoff_off_hides_a_backlog_but_still_delivers_a_manual_handoff() {
+        let tmp = TempDir::new().unwrap();
+        let mut state = make_state(&tmp).await;
+        // A baton written while the server still injected them.
+        end_captured_session(&state, "backlog-session", "/tmp/scratch").await;
+        state.auto_handoff = ai_memory_core::AutoHandoff::Off;
+
+        let rendered = fetch_and_accept_handoff(
+            &state,
+            scratch_start_query("/tmp/scratch"),
+            None,
+            Vec::new(),
+        )
+        .await
+        .unwrap();
+        assert!(
+            rendered.is_none_or(|s| !s.contains("pending handoff")),
+            "off must not inject an automatic baton written before the switch"
+        );
+
+        state
+            .writer
+            .insert_handoff(NewHandoff {
+                workspace_id: state.workspace_id,
+                project_id: state.project_id,
+                from_session_id: None,
+                from_agent: AgentKind::ClaudeCode,
+                to_agent: None,
+                cwd: Some("/tmp/scratch".into()),
+                summary: "DELIBERATE-BATON".into(),
+                open_questions: Vec::new(),
+                next_steps: Vec::new(),
+                files_touched: Vec::new(),
+                owner_user: None,
+            })
+            .await
+            .unwrap();
+        let rendered = fetch_and_accept_handoff(
+            &state,
+            scratch_start_query("/tmp/scratch"),
+            None,
+            Vec::new(),
+        )
+        .await
+        .unwrap()
+        .expect("a memory_handoff_begin baton is delivered in every mode");
+        assert!(rendered.contains("DELIBERATE-BATON"));
     }
 
     #[tokio::test]
