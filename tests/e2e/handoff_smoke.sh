@@ -98,6 +98,9 @@ MODEL_B="${MODEL_B:-gemini-2.5-flash-lite}"
 # Isolate ai-memory's data dir; leave $HOME alone so cargo's target
 # cache + the user's git config etc. stay accessible.
 export AI_MEMORY_DATA_DIR="$TEST_DIR/ai-memory-data"
+# This smoke exercises the automatic SessionEnd baton and its injection,
+# which `[handoff] auto` leaves off by default.
+export AI_MEMORY_HANDOFF__AUTO=inject
 mkdir -p "$AI_MEMORY_DATA_DIR" "$TEST_DIR/blog"
 
 # Mini blog project — non-coding topic so models don't "know" the

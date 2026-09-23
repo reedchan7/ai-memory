@@ -55,6 +55,57 @@ impl std::str::FromStr for HandoffState {
     }
 }
 
+/// What happens to the automatic handoff a SessionEnd would write. Set under
+/// `[handoff] auto`. Each level adds one step to the one before it: `off`
+/// writes nothing, `store` writes the baton, `inject` also pushes it into the
+/// next SessionStart.
+///
+/// Governs only the rule-built baton written for every captured session
+/// (`from_session_id` set). A handoff someone asked for through
+/// `memory_handoff_begin` is deliberate and is delivered in every mode.
+///
+/// `Off` is the default: the automatic baton restates the session page
+/// written at the same moment, and pushing its imperative "Continue from:
+/// <last prompt>" into an unrelated next session makes the agent resume work
+/// nobody asked for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AutoHandoff {
+    /// Never write an automatic handoff. The default.
+    #[default]
+    Off,
+    /// Write it, but leave it for an agent to claim through
+    /// `memory_handoff_list` / `memory_handoff_accept` when the user asks.
+    Store,
+    /// Write it and inject it at the next SessionStart in the same project.
+    /// The behaviour before `[handoff]` existed.
+    Inject,
+}
+
+impl AutoHandoff {
+    /// Whether SessionEnd writes an automatic handoff.
+    #[must_use]
+    pub const fn writes(self) -> bool {
+        !matches!(self, Self::Off)
+    }
+
+    /// Whether SessionStart injects and claims an automatic handoff.
+    #[must_use]
+    pub const fn injects(self) -> bool {
+        matches!(self, Self::Inject)
+    }
+
+    /// Stable config/log representation.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Store => "store",
+            Self::Inject => "inject",
+        }
+    }
+}
+
 /// Input for inserting a new handoff.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewHandoff {

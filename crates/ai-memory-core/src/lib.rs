@@ -52,8 +52,8 @@ pub use actor::{
 };
 pub use error::{MemoryError, MemoryResult};
 pub use handoff::{
-    Handoff, HandoffAcceptance, HandoffContent, HandoffLifecycle, HandoffOrigin, HandoffScope,
-    HandoffState, NewHandoff,
+    AutoHandoff, Handoff, HandoffAcceptance, HandoffContent, HandoffLifecycle, HandoffOrigin,
+    HandoffScope, HandoffState, NewHandoff,
 };
 pub use ids::{
     AgentKind, ApiCredentialId, AutoImproveProposalId, AutoImproveRunId, EntityId, HandoffId,

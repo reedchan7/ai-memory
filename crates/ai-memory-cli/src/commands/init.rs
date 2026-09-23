@@ -268,6 +268,11 @@ mod tests {
             "generated config must preserve historical per-event attribution"
         );
         assert_eq!(
+            loaded.handoff.auto,
+            ai_memory_core::AutoHandoff::Off,
+            "generated config must not inject automatic handoffs"
+        );
+        assert_eq!(
             loaded.consolidation.max_input_tokens,
             ai_memory_consolidate::DEFAULT_CONSOLIDATION_MAX_INPUT_TOKENS
         );

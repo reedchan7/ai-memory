@@ -487,6 +487,9 @@ pub struct Config {
     /// Default `follow-cwd` preserves the historical per-event resolution;
     /// `sticky` keeps the session's project. See [`RoutingSettings`].
     pub routing: RoutingSettings,
+    /// `[handoff]` — whether SessionEnd writes an automatic handoff and when
+    /// the next session sees it. Default `off`. See [`HandoffSettings`].
+    pub handoff: HandoffSettings,
     /// Env-backed alias for hook ingest tokens per second per source.
     pub hook_rate_per_sec: f64,
     /// Env-backed alias for hook ingest burst tokens per source.
@@ -844,6 +847,18 @@ pub struct RoutingSettings {
     pub mid_session: ai_memory_core::MidSessionRouting,
 }
 
+/// `[handoff]` section of `config.toml`.
+///
+/// Set under `[handoff]` in `config.toml` or via the
+/// `AI_MEMORY_HANDOFF__AUTO` env var.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HandoffSettings {
+    /// `off` (default), `store`, or `inject`. See
+    /// [`ai_memory_core::AutoHandoff`] for full semantics.
+    pub auto: ai_memory_core::AutoHandoff,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -886,6 +901,7 @@ impl Default for Config {
             auth: AuthSettings::default(),
             auto_scope: AutoScopeSettings::default(),
             routing: RoutingSettings::default(),
+            handoff: HandoffSettings::default(),
             hook_rate_per_sec: 0.0,
             hook_rate_burst: 0.0,
             allowed_hosts: vec!["localhost".into(), "127.0.0.1".into(), "::1".into()],
@@ -3645,6 +3661,27 @@ mod tests {
         let config_path = tmp.path().join("config.toml");
         std::fs::write(&config_path, toml).unwrap();
         Config::load(Some(&config_path), Some(tmp.path().to_path_buf()))
+    }
+
+    #[test]
+    fn handoff_auto_defaults_to_off_and_parses_every_level() {
+        assert_eq!(
+            Config::default().handoff.auto,
+            ai_memory_core::AutoHandoff::Off
+        );
+        for (raw, expected) in [
+            ("off", ai_memory_core::AutoHandoff::Off),
+            ("store", ai_memory_core::AutoHandoff::Store),
+            ("inject", ai_memory_core::AutoHandoff::Inject),
+        ] {
+            let cfg = load_with_toml(&format!("[handoff]\nauto = \"{raw}\"\n")).unwrap();
+            assert_eq!(cfg.handoff.auto, expected, "[handoff] auto = {raw}");
+            assert_eq!(expected.as_str(), raw);
+        }
+        assert!(
+            load_with_toml("[handoff]\nauto = \"sometimes\"\n").is_err(),
+            "an unknown level must fail closed rather than silently injecting"
+        );
     }
 
     #[test]

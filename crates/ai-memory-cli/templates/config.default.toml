@@ -243,6 +243,22 @@ min_session_age_secs = 600
 [routing]
 mid_session = "follow-cwd"
 
+# What happens to the automatic handoff written when a captured session ends.
+# That baton is rule-built from the session's first and last prompt ("Continue
+# from: <last prompt>") and duplicates the session page written at the same
+# moment. A handoff you ask for (the agent calls `memory_handoff_begin`) is
+# delivered at the next session start in every mode.
+#
+#   off     (default) Write no automatic handoff. Session pages, consolidation
+#           and recall are unaffected.
+#   store   Write it, but never inject it. The agent claims it with
+#           `memory_handoff_list` / `memory_handoff_accept` when you ask where
+#           you left off.
+#   inject  Write it and inject it into the next session in the same project,
+#           whatever that session is about. The behaviour before this setting.
+[handoff]
+auto = "off"
+
 # How the "currently active project" pointer is keyed. Unscoped MCP calls —
 # the normal case, since the tools default to the current project — resolve
 # through it, and so do unscoped writes.

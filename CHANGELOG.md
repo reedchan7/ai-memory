@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- SessionEnd no longer writes an automatic handoff by default, and SessionStart
+  no longer injects one. The rule-built baton ("Continue from: <last prompt>")
+  was prepended to whatever the next session in that project was about, so a
+  session opening with "hi" resumed the previous session's last instruction.
+  The new `[handoff] auto` setting (env `AI_MEMORY_HANDOFF__AUTO`) selects
+  `off` (default: none written), `store` (written, claimed only through
+  `memory_handoff_accept`), or `inject` (the previous behaviour). Handoffs
+  written through `memory_handoff_begin` are delivered in every mode, and
+  session pages, consolidation and recall are unchanged. Under `off` and
+  `store`, open automatic handoffs written earlier are no longer injected.
+
 ### Fixed
 - `companions/ai-memory-macos/build.sh` no longer fails on machines whose
   active developer directory is Command Line Tools only: SwiftUI `@State`
